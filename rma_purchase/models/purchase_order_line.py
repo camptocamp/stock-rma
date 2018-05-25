@@ -7,6 +7,14 @@ from odoo import api, models
 class PurchaseOrderLine(models.Model):
     _inherit = "purchase.order.line"
 
+    # TODO: to be removed on migration to v10:
+    # This is needed because odoo misspelled `store` in v9 :facepalm:
+    state = fields.Selection(related='order_id.state', store=True)
+
+    rma_line_id = fields.Many2one(
+        comodel_name='rma.order.line', string='RMA',
+    )
+
     @api.model
     def name_search(self, name='', args=None, operator='ilike', limit=100):
         """Allows to search by PO reference."""
@@ -25,3 +33,31 @@ class PurchaseOrderLine(models.Model):
         return super(PurchaseOrderLine, self)._name_search(
             name='', args=args, operator=operator, limit=limit,
             name_get_uid=name_get_uid)
+
+    @api.multi
+    def name_get(self):
+        res = []
+        if self.env.context.get('rma'):
+            for purchase in self:
+                invoices = self.env['account.invoice.line'].search(
+                    [('purchase_line_id', '=', purchase.id)])
+                if purchase.order_id.name:
+                    res.append((purchase.id, "%s %s %s qty:%s" % (
+                        purchase.order_id.name,
+                        " ".join(str(x) for x in [
+                            inv.number for inv in invoices.mapped(
+                                'invoice_id')]),
+                        purchase.product_id.name, purchase.product_qty)))
+                else:
+                    res.append(
+                        super(PurchaseOrderLine, purchase).name_get()[0])
+            return res
+        else:
+            return super(PurchaseOrderLine, self).name_get()
+
+    @api.model
+    def create(self, vals):
+        rma_line_id = self.env.context.get('rma_line_id')
+        if rma_line_id:
+            vals['rma_line_id'] = rma_line_id
+        return super(PurchaseOrderLine, self).create(vals)
