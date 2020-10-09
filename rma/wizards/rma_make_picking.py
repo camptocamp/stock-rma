@@ -161,7 +161,7 @@ class RmaMakePicking(models.TransientModel):
                 values
             )
         except UserError as error:
-                errors.append(error.name)
+            errors.append(error.name)
         if errors:
             raise UserError('\n'.join(errors))
         return values.get('origin')
@@ -214,6 +214,11 @@ class RmaMakePicking(models.TransientModel):
         if procurement:
             pickings = self.env['stock.picking'].search(
                 [('origin', '=', procurement)]).ids
+            if not pickings:
+                moves = self.env['stock.move'].search(
+                    [('origin', 'like', procurement)])
+                for move in moves:
+                    pickings.append(move.picking_id.id)
             if len(pickings) > 1:
                 action['domain'] = [('id', 'in', pickings)]
             else:
